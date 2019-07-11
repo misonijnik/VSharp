@@ -61,9 +61,9 @@ module internal Memory =
     type private foldSubLocationAccWrapper<'acc, 'loc, 'pathSegment> =
         { acc : 'acc; loc : 'loc; path : 'pathSegment list }
 
-    let rec private foldSubLocations folder fillPath mergeAcc acc segment cell =
+    let rec private foldSubLocations folder fillHoles fillPath mergeAcc acc segment cell =
         let foldHeap target acc =
-            foldHeapLocationsRec (foldSubLocations folder fillPath mergeAcc) acc target
+            foldHeapLocationsRec (foldSubLocations folder fillHoles fillPath mergeAcc) acc target
         let acc' = lazy (
             match segment with
             | Some segment ->
@@ -85,14 +85,15 @@ module internal Memory =
             | _ -> folder acc segment cell
         commonGuardedErroredApply apply apply (cell.value) (fun gvs ->
             let gs, vs = List.unzip gvs
+            let gs' = List.map fillHoles gs
             let acc' = List.head vs
-            { acc' with acc =  mergeAcc gs (List.map (fun acc -> acc.acc) vs) })
+            { acc' with acc =  mergeAcc gs' (List.map (fun acc -> acc.acc) vs) })
 
-    let private foldHeapLocations folder fillKey fillPath mergeAcc acc heap = // TODO: get rid of typeOf
-        Heap.fold (fun acc loc cell -> (foldSubLocations (fun acc -> folder acc (typeOf cell.value)) fillPath mergeAcc ({ acc = acc; loc = fillKey loc; path = [] }) None cell).acc) acc heap
+    let private foldHeapLocations folder fillHoles fillKey fillPath mergeAcc acc heap = // TODO: get rid of typeOf
+        Heap.fold (fun acc loc cell -> (foldSubLocations (fun acc -> folder acc (typeOf cell.value)) fillHoles fillPath mergeAcc ({ acc = acc; loc = fillKey loc; path = [] }) None cell).acc) acc heap
 
-    let private foldStackLocations folder fillPath mergeAcc acc stack =
-        stackFold (fun acc loc cell -> (foldSubLocations (fun acc -> folder acc (typeOf cell.value)) fillPath mergeAcc ({ acc = acc; loc = loc; path = [] }) None cell).acc) acc stack
+    let private foldStackLocations folder fillHoles fillPath mergeAcc acc stack =
+        stackFold (fun acc loc cell -> (foldSubLocations (fun acc -> folder acc (typeOf cell.value)) fillHoles fillPath mergeAcc ({ acc = acc; loc = loc; path = [] }) None cell).acc) acc stack
 
 // ------------------------------- Instantiation (lazy & default) -------------------------------
 
@@ -619,11 +620,11 @@ module internal Memory =
      >> optCons path
      >> List.rev
 
-    and private fillAndMutateStack (ctx : compositionContext) source (acc : foldSubLocationAccWrapper<_,stackKey,_>) _ segment cell =
-        let time = Timestamp.compose ctx.time cell.modified
-        let path' = fillAndPushSegment ctx source acc.path segment
-        let v = fillHoles ctx source cell.value
-        { acc with acc = mutateStack ctx.mtd acc.acc acc.loc path' time v }
+    and private fillAndMutateStack (ctx : compositionContext) source (acc : foldSubLocationAccWrapper<_,stackKey,_>) _ segment cell = acc
+//        let time = Timestamp.compose ctx.time cell.modified
+//        let path' = fillAndPushSegment ctx source acc.path segment
+//        let v = fillHoles ctx source cell.value
+//        { acc with acc = mutateStack ctx.mtd acc.acc acc.loc path' time v }
 
     and private fillAndMutateCommon<'a when 'a : equality> mutateHeap (ctx : compositionContext) restricted source (acc : foldSubLocationAccWrapper<heap<'a,_,_>,'a,_>) typ segment cell =
         let time = Timestamp.compose ctx.time cell.modified
@@ -632,14 +633,14 @@ module internal Memory =
         let typ = substituteTypeVariables ctx source typ |> specifyType
         { acc with acc = mutateHeap restricted ctx.mtd acc.acc acc.loc typ path' time v }
 
-    and private composeDefinedHeaps writer fillKey fillPath readHeap restricted s h h' =
-        foldHeapLocations (writer restricted s) fillKey fillPath (mergeDefinedHeaps false readHeap) h h'
+    and private composeDefinedHeaps writer fillHoles fillKey fillPath readHeap restricted s h h' =
+        foldHeapLocations (writer restricted s) fillHoles fillKey fillPath (mergeDefinedHeaps false readHeap) h h'
 
     and private composeGeneralizedHeaps<'key when 'key : equality> writer fillHolesInKey readHeap (ctx : compositionContext) getter setter s (h' : 'key generalizedHeap) =
         match getter s, h' with
         | Defined(r, h), Defined(r', h') ->
             assert(not r')
-            composeDefinedHeaps (writer ctx) (fillHolesInKey ctx s) (fillHolesInPathSegment ctx s) (readHeap ctx.mtd) r s h h' |> Defined r
+            composeDefinedHeaps (writer ctx) (fillHoles ctx s) (fillHolesInKey ctx s) (fillHolesInPathSegment ctx s) (readHeap ctx.mtd) r s h h' |> Defined r
         | Merged ghs, _ ->
             let gs, hs = List.unzip ghs
             hs |> List.map (fun h -> composeGeneralizedHeaps writer fillHolesInKey readHeap ctx getter setter (setter s h) h') |> mergeGeneralizedHeaps (readHeap ctx.mtd) gs
@@ -672,7 +673,7 @@ module internal Memory =
             match h' with
             | Defined(r, h') ->
                 let ctx'' = decomposeContexts ctx ctx'
-                let h = composeDefinedHeaps (writer ctx'') (fillHolesInKey ctx'' s) (fillHolesInPathSegment ctx'' s) (readHeap ctx.mtd) r s h' h'' |> Defined r
+                let h = composeDefinedHeaps (writer ctx'') (fillHoles ctx s) (fillHolesInKey ctx'' s) (fillHolesInPathSegment ctx'' s) (readHeap ctx.mtd) r s h' h'' |> Defined r
                 composeGeneralizedHeaps writer fillHolesInKey readHeap ctx' getter setter s' h
             | _ ->
                 let h'' = fillHolesInHeap fillHolesInKey ctx s h''
@@ -685,7 +686,7 @@ module internal Memory =
         | Mutation(h, h'), Defined(r, h'') ->
             // TODO: this is probably wrong!
             assert(not r)
-            Mutation(h, composeDefinedHeaps (writer ctx) (fillHolesInKey ctx s) (fillHolesInPathSegment ctx s) (readHeap ctx.mtd) false s h' h'')
+            Mutation(h, composeDefinedHeaps (writer ctx) (fillHoles ctx s) (fillHolesInKey ctx s) (fillHolesInPathSegment ctx s) (readHeap ctx.mtd) false s h' h'')
         | RecursiveApplication _, Composition _ -> __notImplemented__()
         | HigherOrderApplication _, Composition _ -> __notImplemented__()
         | RecursiveApplication _, HigherOrderApplication _ -> __notImplemented__()
@@ -694,7 +695,7 @@ module internal Memory =
         | Mutation _, HigherOrderApplication _ -> __notImplemented__()
 
     and composeStacksOf ctx state state' =
-        (foldStackLocations (fillAndMutateStack ctx state) (fillHolesInPathSegment ctx state) mergeStates state state'.stack).stack
+        (foldStackLocations (fillAndMutateStack ctx state) (fillHoles ctx state) (fillHolesInPathSegment ctx state) mergeStates state state'.stack).stack
 
     and composeHeapsOf ctx state heap =
         composeGeneralizedHeaps (fillAndMutateCommon mutateHeap) fillHoles readHeap ctx heapOf withHeap state heap

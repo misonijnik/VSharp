@@ -198,7 +198,41 @@ namespace VSharp.Test.Tests
         public int Field;
         public int OtherField;
     }
-    [TestSvmFixture]
+
+    public sealed class ListN
+    {
+        public int Key;
+        public ListN Next = null;
+
+        public ListN(int n)
+        {
+            Key = n;
+        }
+
+        public void Add(int x)
+        {
+            if (x < Key)
+            {
+                if (Next == null)
+                    Next = new ListN(x);
+                else
+                    Next.Add(x);
+            }
+        }
+    }
+
+    public sealed class List
+    {
+        private ListN _root = null;
+        public int Key => _root.Key;
+
+        public void Add(int x)
+        {
+            if (_root != null)
+                _root.Add(x);
+        }
+    }
+
     public sealed class BinTreeNode
     {
         public int Key;
@@ -232,8 +266,6 @@ namespace VSharp.Test.Tests
         }
         public void Add2(int x)
         {
-//            if (Key == x)
-//                return;
             if (x < Key)
             {
                 if (Left == null)
@@ -278,7 +310,7 @@ namespace VSharp.Test.Tests
             else
                 _root.Add(x);
         }
-        
+
         public void Add2(int x)
         {
             if (_root != null)
@@ -765,6 +797,14 @@ namespace VSharp.Test.Tests
             if (tree == null)
                 return;
             tree.Add2(x);
+        }
+
+        [TestSvm]
+        public static void ListTest(List list)
+        {
+            if (list == null)
+                return;
+            list.Add(0);
         }
     }
 }
