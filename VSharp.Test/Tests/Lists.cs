@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
+using NUnit.Framework;
 
 namespace VSharp.Test.Tests
 {
@@ -745,6 +746,114 @@ namespace VSharp.Test.Tests
             if (tree == null)
                 return;
             tree.Add2(x);
+        }
+    }
+
+    [TestSvmFixture]
+    public static class WIP
+    {
+//         Worked //[Ignore("Internal error: stack does not contain key (num, LocalVariable:-1283898937)!")]
+        [TestSvm]
+        public static void TestFibA(int n)
+        {
+            if (n <= 0)
+                return;
+            var a = new A {Field = 1, OtherField = 1};
+            SharedA.FibIter(a, n);
+            if (!(a.Field >= n))
+                throw new Exception();
+        }
+
+        [Ignore("Internal error: stack does not contain key (tree, LocalVariable:-1283898937)!")]
+//        [TestSvm] // TODO: needs Encoding
+        public static void TestFromListContains(ListNode list)
+        {
+            if (list == null)
+                return;
+            var tree = SharedTree.FromList(list);
+            if (!SharedTree.Contains(tree, list.Key))
+                throw new Exception();
+        }
+
+//        [Ignore("Internal error: stack does not contain key (this, 600012F)!")]
+        [TestSvm]
+        public static void TestBinTree(BinTree tree, int x)
+        {
+            if (tree == null)
+                return;
+            tree.Add(x);
+            if (!tree.Contains(x))
+                throw new Exception();
+        }
+
+//        [Ignore("Internal error: stack does not contain key (this, 6000130)!")]
+        [TestSvm]
+        public static void TestBinTree2(BinTree tree, int x)
+        {
+            if (tree == null)
+                return;
+            tree.Add2(x);
+        }
+
+        [TestSvm]
+        public static void SumTest1() // doesn't work: HeapRef(HeapRef); missing argument
+        {
+            if (SharedList.Sum(SharedList.CreateList(10)) > 0)
+                throw new Exception();
+        }
+
+        private static void Swap(A a, int n)
+        {
+            if (n <= 0)
+                return;
+            int x = a.Field;
+            a.Field = a.OtherField;
+            a.OtherField = x;
+            Swap(a, n - 1);
+        }
+
+        [TestSvm]
+        public static void Test4() // CORE: empty unions // (fixed) CORE: stack does not contain key (num, LocalVariable:-1283898937)!
+        {
+            var a = new A {Field = 3, OtherField = 5};
+            Swap(a, 50);
+            if (a.Field != 15)
+                throw new Exception();
+        }
+
+        static void TestReverseDecreaseHead(int n) // CORE: empty unions
+        {
+            if (n <= 0)
+                return;
+            var l = SharedList.CreateDecreasingList(n);
+            var r = SharedList.Reverse(l);
+            if (r.Key != 1)
+                throw new Exception();
+        }
+
+        [TestSvm]
+        public static void TestLengthAppend(ListNode l1, ListNode l2) // CORE: stack doesn't contain key
+        {
+            if (l1 == null)
+                return;
+            var l1Length = SharedList.Length(l1);
+            var l2Length = SharedList.Length(l2);
+            SharedList.Append(l1, l2);
+            var appLength = SharedList.Length(l1);
+            if (appLength != l1Length + l2Length) // not right: cycles
+                throw new Exception();
+        }
+
+        [TestSvm]
+        public static void TestAppendCreate(int n, int m) // CORE: stack doesn't contain key
+        {
+            if (n <= 0)
+                return;
+            var l1 = SharedList.CreateList(n);
+            var l2 = SharedList.CreateList(m);
+            SharedList.Append(l1, l2);
+            if (SharedList.Length(l1) != n + m)
+                throw new Exception();
         }
     }
 }

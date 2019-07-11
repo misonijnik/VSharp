@@ -693,8 +693,8 @@ module internal Memory =
         | Mutation _, RecursiveApplication _ -> __notImplemented__()
         | Mutation _, HigherOrderApplication _ -> __notImplemented__()
 
-    and composeStacksOf ctx state state' =
-        (foldStackLocations (fillAndMutateStack ctx state) (fillHolesInPathSegment ctx state) mergeStates state state'.stack).stack
+    and composeStacksOf ctx state state' = state.stack
+        //(foldStackLocations (fillAndMutateStack ctx state) (fillHolesInPathSegment ctx state) mergeStates state state'.stack).stack
 
     and composeHeapsOf ctx state heap =
         composeGeneralizedHeaps (fillAndMutateCommon mutateHeap) fillHoles readHeap ctx heapOf withHeap state heap
