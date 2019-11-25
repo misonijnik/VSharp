@@ -46,7 +46,7 @@ module internal Memory =
         referenceSubLocations arrayRef [ArrayLength indices]
 
     let referenceBlockField structRef (name : string) typ =
-        referenceSubLocations structRef [BlockField(name, typ)]
+        referenceSubLocations structRef [BlockField(FieldId name, typ)]
 
 // ------------------------------- Traversal -------------------------------
 
@@ -103,7 +103,7 @@ module internal Memory =
 
     [<StructuralEquality;NoComparison>]
     type private lazyInstantiation<'a when 'a : equality> =
-        {location : term; heap : 'a generalizedHeap option; extractor : TermExtractor; typeExtractor : TypeExtractor}
+        {location : term; heap : 'a generalizedHeap option transparent; extractor : TermExtractor; typeExtractor : TypeExtractor}
         interface IExtractingSymbolicConstantSource with
             override x.SubTerms = Seq.singleton x.location
             override x.WithExtractor e = {x with extractor = e} :> IExtractingSymbolicConstantSource
@@ -116,7 +116,7 @@ module internal Memory =
                 | :? lazyInstantiation<'a> as li -> x.location = li.location
                 | _ -> false
     let lazyInstantiationWithExtractor location heap extractor typeExtractor : IExtractingSymbolicConstantSource =
-        let gli heap = {location = location; heap = heap; extractor = extractor; typeExtractor = typeExtractor} :> IExtractingSymbolicConstantSource
+        let gli heap = {location = location; heap = {v=heap}; extractor = extractor; typeExtractor = typeExtractor} :> IExtractingSymbolicConstantSource
         match heap, location.term with
         | None, Ref(TopLevelHeap _, _) -> gli (None : term generalizedHeap option)
         | None, Ref(TopLevelStatics _, _) -> gli (None : termType generalizedHeap option)
@@ -125,11 +125,11 @@ module internal Memory =
         | _ -> __notImplemented__()
     let lazyInstantiation location heap = lazyInstantiationWithExtractor location heap (IdTermExtractor()) (IdTypeExtractor())
     type lazyInstantiation<'a when 'a : equality> with
-        member x.WithLocation loc = lazyInstantiationWithExtractor loc x.heap x.extractor x.typeExtractor
+        member x.WithLocation loc = lazyInstantiationWithExtractor loc x.heap.v x.extractor x.typeExtractor
 
     let (|LazyInstantiation|_|) (src : ISymbolicConstantSource) =
         match src with
-        | :? lazyInstantiation<_> as li -> Some(li.location, li.heap, li.extractor :? IdTermExtractor)
+        | :? lazyInstantiation<_> as li -> Some(li.location, li.heap.v, li.extractor :? IdTermExtractor)
         | _ -> None
 
     let private mkFields metadata isStatic mkField fql typ =
@@ -137,7 +137,7 @@ module internal Memory =
         let fields = Reflection.fieldsOf isStatic dotNetType
         let addField heap (name, typ) =
             let termType = typ |> fromDotNetType
-            let fql' = BlockField(name, termType) |> addToOptionFQL fql
+            let fql' = BlockField(FieldId name, termType) |> addToOptionFQL fql
             let value = mkField metadata name termType fql'
             let key = makeKey name fql' termType
             Heap.add key value heap
@@ -160,8 +160,8 @@ module internal Memory =
     let rec defaultOf metadata typ fql =
         match typ with
         | Bool -> makeFalse metadata
-        | Numeric t when t.IsEnum -> CastConcrete true (System.Activator.CreateInstance t) t metadata
-        | Numeric t -> CastConcrete true 0 t metadata
+        | Numeric(Id t) when t.IsEnum -> CastConcrete true (System.Activator.CreateInstance t) t metadata
+        | Numeric(Id t) -> CastConcrete true 0 t metadata
         | ArrayType _
         | ClassType _
         | InterfaceType _ -> makeNullRef metadata
@@ -439,7 +439,7 @@ module internal Memory =
                 | Block(fields, blockType) ->
                     let fql' = addToFQL location ptrFql
                     match location with
-                    | BlockField(name, typ) ->
+                    | BlockField(FieldId name, typ) ->
                         let instantiator = if read then lazyInstantiator else Some <| genericLazyInstantiator term.metadata groundHeap fql' typ
                         let ptr' = { location = name; fullyQualifiedLocation = fql'; typ = typ; path = path' }
                         let mapper (k, term) (ctx, s) = k, fillHoles ctx s term
@@ -480,7 +480,7 @@ module internal Memory =
 
     and private accessBlockField read mtd update term fieldName fieldType =
         let lazyInstor = __unreachable__
-        let path = [BlockField(fieldName, fieldType)]
+        let path = [BlockField(FieldId fieldName, fieldType)]
         let fakeFql = (NullAddress, []) // TODO: fix and never use fake fql
         accessTerm read mtd None (makeTrue mtd) update [] (Some lazyInstor) fakeFql path term |> fst
 
@@ -631,7 +631,7 @@ module internal Memory =
         | Concrete(:? concreteHeapAddress as addr', t) ->
             Concrete ctx.mtd (composeAddresses ctx.addr addr') t
         | Pointers.SymbolicThisOnStack(token, path) ->
-            let id = ("this", token)
+            let id = ThisKey token
             let reference = referenceLocalVariable term.metadata id |> deref term.metadata state |> fst
             referenceSubLocations reference path
         | _ -> term
@@ -678,8 +678,8 @@ module internal Memory =
         let path' = fillAndPushSegment ctx source acc.path segment
         let v = fillHoles ctx source value
         match acc.loc with
-        | (name, token) when Pointers.symbolicThisStackKey.Equals(name) ->
-            let loc = "this", token
+        | SymbolicThisKey token ->
+            let loc = ThisKey token
             let thisRef = stackDeref (stackLazyInstantiator acc.acc loc) acc.acc loc |> fst
             let ref = referenceSubLocations thisRef path' //TODO: or (Option.toList segment) ?
             let _, state = mutate ctx.mtd acc.acc ref v
@@ -798,7 +798,7 @@ module internal Memory =
         StackRef metadata location []
 
     let referenceStaticField metadata targetType fieldName fieldType =
-        StaticRef metadata targetType [BlockField(fieldName, fieldType)]
+        StaticRef metadata targetType [BlockField(FieldId fieldName, fieldType)]
 
     let private checkIndices mtd state arrayRef (indices : term list) k =
         let intToTerm i = makeNumber mtd i
@@ -897,7 +897,7 @@ module internal Memory =
 
     let makeSymbolicThis metadata state token typ =
         let isRef = concreteIsReferenceType typ // TODO: "this" can be type variable, so we need to branch by "isValueType" condition
-        let thisKey = ((if isRef then "this" else Pointers.symbolicThisStackKey), token)
+        let thisKey = if isRef then ThisKey token else SymbolicThisKey token
         let fql = TopLevelStack thisKey, []
         let thisStackRef = makeFQLRef metadata fql
         let liSource = lazyInstantiation thisStackRef None
@@ -957,7 +957,7 @@ module internal Memory =
         interface IExtractingSymbolicConstantSource with
             override x.ComposeWithoutExtractor ctx state =
                 let state' =
-                    match x.heap with
+                    match x.heap.v with
                     | Some heap ->
                         // TODO: make it more effective (use lower-level functions to access heap directly instead of creating fresh state)
                         match x.location.term with // TODO: get rid of box someday
