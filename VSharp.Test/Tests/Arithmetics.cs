@@ -571,7 +571,7 @@ namespace VSharp.Test.Tests
         }
 
         // 5.9
-        [Ignore("hasKey indexes randomly changes from run to run")]
+        [TestSvm]
         public static float AbsSingleMethod()
         {
             return Math.Abs(Convert.ToSingle(-5.9));

@@ -926,7 +926,7 @@ namespace VSharp.Test.Tests
             return tree.Contains(x);
         }
 
-        [Ignore("Guards in results are randomly shaking")]
+        [TestSvm]
         public static void TestBinTree2(BinTree tree, int x)
         {
             if (tree == null)
@@ -934,7 +934,7 @@ namespace VSharp.Test.Tests
             tree.Add2(x);
         }
 
-        [Ignore("Guards in results are randomly shaking")]
+        [TestSvm]
         public static void ListTest(List list)
         {
             if (list == null)
