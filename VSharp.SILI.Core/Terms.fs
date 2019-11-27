@@ -311,7 +311,7 @@ and
         override x.GetHashCode() = x.term.GetHashCode()
         override x.Equals(o : obj) =
             match o with
-            | :? term as other -> x.term.Equals(other.term)
+            | :? term as other -> Microsoft.FSharp.Core.LanguagePrimitives.PhysicalEquality x.term other.term
             | _ -> false
 
 and
@@ -323,6 +323,16 @@ and 'key memoryCell when 'key : equality = memoryCell<'key, fql, termType>
 
 type INonComposableSymbolicConstantSource =
     inherit ISymbolicConstantSource
+
+module HashMap =
+    let hashMap = Dictionary<termNode, term>()
+    let addTerm term =
+        let node = term.term
+        if hashMap.ContainsKey node
+            then (hashMap.[node])
+            else
+                hashMap.Add(node, term)
+                term
 
 [<AutoOpen>]
 module internal Terms =
@@ -358,25 +368,25 @@ module internal Terms =
 
 // --------------------------------------- Primitives ---------------------------------------
 
-    let Nop<'a> = { term = Nop; metadata = Metadata.empty<'a> }
-    let Error metadata term = { term = Error term; metadata = metadata }
-    let Concrete metadata obj typ = { term = Concrete(obj, typ); metadata = metadata }
-    let Constant metadata name source typ = { term = Constant({v=name}, source, typ); metadata = metadata }
-    let Array metadata dimension length lower constant contents lengths = { term = Array(dimension, length, lower, constant, contents, lengths); metadata = metadata }
-    let Expression metadata op args typ = { term = Expression(op, args, typ); metadata = metadata }
-    let Struct metadata fields typ = { term = Struct(fields, typ); metadata = metadata }
-    let Class metadata fields = { term = Class fields; metadata = metadata }
-    let Block metadata fields typ = Option.fold (Struct metadata fields |> always) (Class metadata fields) typ
-    let StackRef metadata key path = { term = Ref(TopLevelStack key, path); metadata = metadata }
-    let HeapRef metadata addr baseType sightType path = { term = Ref(TopLevelHeap(addr, baseType, sightType), path); metadata = metadata }
-    let StaticRef metadata typ path = { term = Ref(TopLevelStatics typ, path); metadata = metadata }
-    let StackPtr metadata key path typ = { term = Ptr(TopLevelStack key, path, typ, None); metadata = metadata }
-    let HeapPtr metadata addr baseType sightType path ptrTyp = { term = Ptr(TopLevelHeap(addr, baseType, sightType), path, ptrTyp, None); metadata = metadata }
-    let AnyPtr metadata topLevel path typ shift = { term = Ptr(topLevel, path, typ, shift); metadata = metadata }
-    let IndentedPtr metadata topLevel path typ shift = { term = Ptr(topLevel, path, typ, Some shift); metadata = metadata }
-    let Ref metadata topLevel path = { term = Ref(topLevel, path); metadata = metadata }
-    let Ptr metadata topLevel path typ = { term = Ptr(topLevel, path, typ, None); metadata = metadata }
-    let Union metadata gvs = { term = Union gvs; metadata = metadata }
+    let Nop<'a> = HashMap.addTerm { term = Nop; metadata = Metadata.empty<'a> }
+    let Error metadata term = HashMap.addTerm { term = Error term; metadata = metadata }
+    let Concrete metadata obj typ = HashMap.addTerm { term = Concrete(obj, typ); metadata = metadata }
+    let Constant metadata name source typ = HashMap.addTerm { term = Constant({v=name}, source, typ); metadata = metadata }
+    let Array metadata dimension length lower constant contents lengths = HashMap.addTerm { term = Array(dimension, length, lower, constant, contents, lengths); metadata = metadata }
+    let Expression metadata op args typ = HashMap.addTerm { term = Expression(op, args, typ); metadata = metadata }
+    let Struct metadata fields typ = HashMap.addTerm { term = Struct(fields, typ); metadata = metadata }
+    let Class metadata fields = HashMap.addTerm { term = Class fields; metadata = metadata }
+    let Block metadata fields typ = HashMap.addTerm <| Option.fold (Struct metadata fields |> always) (Class metadata fields) typ
+    let StackRef metadata key path = HashMap.addTerm { term = Ref(TopLevelStack key, path); metadata = metadata }
+    let HeapRef metadata addr baseType sightType path = HashMap.addTerm { term = Ref(TopLevelHeap(addr, baseType, sightType), path); metadata = metadata }
+    let StaticRef metadata typ path = HashMap.addTerm { term = Ref(TopLevelStatics typ, path); metadata = metadata }
+    let StackPtr metadata key path typ = HashMap.addTerm { term = Ptr(TopLevelStack key, path, typ, None); metadata = metadata }
+    let HeapPtr metadata addr baseType sightType path ptrTyp = HashMap.addTerm { term = Ptr(TopLevelHeap(addr, baseType, sightType), path, ptrTyp, None); metadata = metadata }
+    let AnyPtr metadata topLevel path typ shift = HashMap.addTerm { term = Ptr(topLevel, path, typ, shift); metadata = metadata }
+    let IndentedPtr metadata topLevel path typ shift = HashMap.addTerm { term = Ptr(topLevel, path, typ, Some shift); metadata = metadata }
+    let Ref metadata topLevel path = HashMap.addTerm { term = Ref(topLevel, path); metadata = metadata }
+    let Ptr metadata topLevel path typ = HashMap.addTerm { term = Ptr(topLevel, path, typ, None); metadata = metadata }
+    let Union metadata gvs = HashMap.addTerm { term = Union gvs; metadata = metadata }
 
     // TODO: get rid of fql reversing (by changing fql) (a lot of bugs are hidden here)
     let reverseFQL fql = mapsnd List.rev fql
