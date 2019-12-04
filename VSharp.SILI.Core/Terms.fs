@@ -48,7 +48,7 @@ type locationBinding = obj
 type stackHash = int list
 type concreteHeapAddress = int list
 type termOrigin = { location : locationBinding; stack : stackHash }
-type termMetadata = { origins : termOrigin list; mutable misc : HashSet<obj> }
+type termMetadata = { origins : termOrigin list; mutable misc : IDictionary<string, obj> }
 
 type ICodeLocation =
     abstract Location : obj
@@ -340,9 +340,10 @@ and
 and
     [<CustomEquality;NoComparison>]
     term =
-        {term : termNode; metadata : termMetadata}
+        {term : termNode; metadata : termMetadata; hc : int}
         override x.ToString() = x.term.ToString()
-        override x.GetHashCode() = x.term.GetHashCode()
+        override x.GetHashCode() = x.hc
+            //unbox x.metadata.misc.["hash"]
         override x.Equals(o : obj) =
             match o with
             | :? term as other -> Microsoft.FSharp.Core.LanguagePrimitives.PhysicalEquality x.term other.term
@@ -358,60 +359,63 @@ and 'key memoryCell when 'key : equality = memoryCell<'key, heapFQL, termType>
 type INonComposableSymbolicConstantSource =
     inherit ISymbolicConstantSource
 
+
+module internal Metadata =
+    let empty<'a> = { origins = List.empty; misc = null }
+    let combine m1 m2 = { origins = List.append m1.origins m2.origins |> List.distinct; misc = null }
+    let combine3 m1 m2 m3 = { origins = List.append3 m1.origins m2.origins m3.origins |> List.distinct; misc = null }
+    let addMisc t key obj =
+        if t.metadata.misc = null then t.metadata.misc <- Dictionary<string, obj>()
+        t.metadata.misc.Add(key, obj) |> ignore
+    let removeMisc t (key : string) =
+        if t.metadata.misc <> null then
+            t.metadata.misc.Remove key |> ignore
+            if t.metadata.misc.Count = 0 then t.metadata.misc <- null
+    let miscContains t obj = t.metadata.misc <> null && t.metadata.misc.Contains(obj)
+    let firstOrigin m =
+        match m.origins with
+        | [] -> null
+        | x::_ -> x.location
+    let clone m = { m with misc = if m.misc <> null then Dictionary<string, obj>(m.misc) else null}
+
 module HashMap =
     let hashMap = Dictionary<termNode, term>()
-    let addTerm term =
-        let node = term.term
-        if hashMap.ContainsKey node
-            then (hashMap.[node])
+    let addTerm node mtd =
+        let result = ref { term = node; metadata = Metadata.empty; hc = 0 }
+        if hashMap.TryGetValue(node, result)
+            then !result
             else
+                let hc = hash node
+//                Metadata.addMisc term "hash" hc
+                let term = { term = node; metadata = mtd; hc = hc }
                 hashMap.Add(node, term)
                 term
 
 [<AutoOpen>]
 module internal Terms =
-
-    module internal Metadata =
-        let empty<'a> = { origins = List.empty; misc = null }
-        let combine m1 m2 = { origins = List.append m1.origins m2.origins |> List.distinct; misc = null }
-        let combine3 m1 m2 m3 = { origins = List.append3 m1.origins m2.origins m3.origins |> List.distinct; misc = null }
-        let addMisc t obj =
-            if t.metadata.misc = null then t.metadata.misc <- new HashSet<obj>()
-            t.metadata.misc.Add obj |> ignore
-        let removeMisc t obj =
-            if t.metadata.misc <> null then
-                t.metadata.misc.Remove obj |> ignore
-                if t.metadata.misc.Count = 0 then t.metadata.misc <- null
-        let miscContains t obj = t.metadata.misc <> null && t.metadata.misc.Contains(obj)
-        let firstOrigin m =
-            match m.origins with
-            | [] -> null
-            | x::_ -> x.location
-        let clone m = { m with misc = if m.misc <> null then new System.Collections.Generic.HashSet<obj>(m.misc) else null}
-
     let term (term : term) = term.term
 
 // --------------------------------------- Primitives ---------------------------------------
 
-    let Nop<'a> = HashMap.addTerm { term = Nop; metadata = Metadata.empty<'a> }
-    let Error metadata term = HashMap.addTerm { term = Error term; metadata = metadata }
-    let Concrete metadata obj typ = HashMap.addTerm { term = Concrete(obj, typ); metadata = metadata }
-    let Constant metadata name source typ = HashMap.addTerm { term = Constant({v=name}, source, typ); metadata = metadata }
-    let Array metadata dimension length lower constant contents lengths = HashMap.addTerm { term = Array(dimension, length, lower, constant, contents, lengths); metadata = metadata }
-    let Expression metadata op args typ = HashMap.addTerm { term = Expression(op, args, typ); metadata = metadata }
-    let Struct metadata fields typ = HashMap.addTerm { term = Struct(fields, typ); metadata = metadata }
-    let Class metadata fields = HashMap.addTerm { term = Class fields; metadata = metadata }
-    let Block metadata fields typ = HashMap.addTerm <| Option.fold (Struct metadata fields |> always) (Class metadata fields) typ
-    let StackRef metadata key path = HashMap.addTerm { term = Ref(RefTopLevelStack key, path); metadata = metadata }
-    let HeapRef metadata addr baseType sightType path = HashMap.addTerm { term = Ref(RefTopLevelHeap(addr, baseType, sightType), path); metadata = metadata }
-    let StaticRef metadata typ path = HashMap.addTerm { term = Ref(RefTopLevelStatics typ, path); metadata = metadata }
-    let StackPtr metadata key path typ = HashMap.addTerm { term = Ptr(RefTopLevelStack key, path, typ, None); metadata = metadata }
-    let HeapPtr metadata addr baseType sightType path ptrTyp = HashMap.addTerm { term = Ptr(RefTopLevelHeap(addr, baseType, sightType), path, ptrTyp, None); metadata = metadata }
-    let AnyPtr metadata topLevel path typ shift = HashMap.addTerm { term = Ptr(topLevel, path, typ, shift); metadata = metadata }
-    let IndentedPtr metadata topLevel path typ shift = HashMap.addTerm { term = Ptr(topLevel, path, typ, Some shift); metadata = metadata }
-    let Ref metadata topLevel path = HashMap.addTerm { term = Ref(topLevel, path); metadata = metadata }
-    let Ptr metadata topLevel path typ = HashMap.addTerm { term = Ptr(topLevel, path, typ, None); metadata = metadata }
-    let Union metadata gvs = HashMap.addTerm { term = Union gvs; metadata = metadata }
+    let Nop<'a> = HashMap.addTerm Nop Metadata.empty<'a>
+    let Error metadata term = HashMap.addTerm (Error term) metadata
+    let Concrete metadata obj typ = HashMap.addTerm (Concrete(obj, typ)) metadata
+    let Constant metadata name source typ = HashMap.addTerm (Constant({v=name}, source, typ)) metadata
+    let Array metadata dimension length lower constant contents lengths = HashMap.addTerm (Array(dimension, length, lower, constant, contents, lengths)) metadata
+    let Expression metadata op args typ = HashMap.addTerm (Expression(op, args, typ)) metadata
+    let Block metadata fields typ = HashMap.addTerm (Option.fold (fun _ t -> Struct(fields, t)) (Class fields) typ) metadata
+    let Struct metadata fields typ = HashMap.addTerm (Struct(fields, typ)) metadata
+    let Class metadata fields = HashMap.addTerm (Class fields) metadata
+    let StackRef metadata key path = HashMap.addTerm (Ref(RefTopLevelStack key, path)) metadata
+    let HeapRef metadata addr baseType sightType path = HashMap.addTerm (Ref(RefTopLevelHeap(addr, baseType, sightType), path)) metadata
+    let StaticRef metadata typ path = HashMap.addTerm (Ref(RefTopLevelStatics typ, path)) metadata
+    let StackPtr metadata key path typ = HashMap.addTerm (Ptr(RefTopLevelStack key, path, typ, None)) metadata
+    let HeapPtr metadata addr baseType sightType path ptrTyp = HashMap.addTerm (Ptr(RefTopLevelHeap(addr, baseType, sightType), path, ptrTyp, None)) metadata
+    let AnyPtr metadata topLevel path typ shift = HashMap.addTerm (Ptr(topLevel, path, typ, shift)) metadata
+    let IndentedPtr metadata topLevel path typ shift = HashMap.addTerm (Ptr(topLevel, path, typ, Some shift)) metadata
+    let Ref metadata topLevel path = HashMap.addTerm (Ref(topLevel, path)) metadata
+    let Ptr metadata topLevel path typ = HashMap.addTerm (Ptr(topLevel, path, typ, None)) metadata
+    let Union metadata gvs = HashMap.addTerm (Union gvs) metadata
 
     // TODO: get rid of fql reversing (by changing fql) (a lot of bugs are hidden here)
     let reverseFQL fql = mapsnd List.rev fql
