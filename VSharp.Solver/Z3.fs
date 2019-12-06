@@ -60,6 +60,7 @@ module internal Z3 =
             | Numeric(Id t) when t.IsEnum -> (ctx()).MkIntSort() :> Sort
             | Numeric _ as t when Types.IsInteger t -> (ctx()).MkIntSort() :> Sort
             | Numeric _ as t when Types.IsReal t -> (ctx()).MkRealSort() :> Sort
+            | ClassType(Id t, []) when t = typedefof<System.Type> -> (ctx()).MkIntSort() :> Sort
             | Numeric _
             | ArrayType _
             | Void
