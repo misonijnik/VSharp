@@ -134,7 +134,7 @@ and public ILInterpreter() as this =
     member private x.Raise exptn (cilState : cilState) k =
         let exc, state = exptn cilState.state
         //TODO: exception handling
-        k [exc, {cilState with state = state; exceptionFlag = Some exc}]
+        k [Error exc, {cilState with state = state; exceptionFlag = Some exc}]
 
     member private x.NpeOrInvokeStatement (cilState : cilState) (this : term option) statement k =
         match this with
@@ -143,6 +143,7 @@ and public ILInterpreter() as this =
              BranchOnNull cilState this
                 (x.Raise x.NullReferenceException)
                 statement
+                (fun error -> (error, {cilState with exceptionFlag = Some error}) :: [])
                 k
     member private x.ReduceMethodBaseCall (methodBase : MethodBase) cilState this (args : term list symbolicValue) k =
         let callMethodWithoutNRE (cilState : cilState) k =
@@ -212,11 +213,13 @@ and public ILInterpreter() as this =
                 (fun state k -> k (API.Types.TypeIsRef baseType this &&& API.Types.TypeIsType baseType sightType, state))
                 (callForConcreteType baseType)
                 (x.CallAbstract caller funcId)
+                (fun err -> (err, {cilState with exceptionFlag = Some err}) :: [])
         let tryToCallForSightType cilState =
             StatedConditionalExecutionCIL cilState
                 (fun state k -> k (API.Types.TypeIsRef sightType this, state))
                 (callForConcreteType sightType)
                 tryToCallForBaseType
+                (fun err -> (err, {cilState with exceptionFlag = Some err}) :: [])
         let sightDotNetType = Types.ToDotNetType sightType
         let baseDotNetType = Types.ToDotNetType baseType
         if sightDotNetType.IsInterface && baseDotNetType.IsInterface
@@ -261,6 +264,7 @@ and public ILInterpreter() as this =
                         BranchOnNull cilState target
                             (invoke None)
                             (invoke (Some target))
+                            (fun error -> (error, {cilState with exceptionFlag = Some error}) :: [])
                             k)
                     k
             let explicitLambda : cilState list symbolicLambda = invoke
@@ -295,6 +299,7 @@ and public ILInterpreter() as this =
                 (fun state k -> k (Types.IsValueType constructedTermType, state))
                 valueTypeCase
                 referenceTypeCase
+                (fun error -> {cilState with exceptionFlag = Some error} :: [])
                 id
         let nonDelegateCase (cilState : cilState) =
             x.InitEntryPoint cilState.state typ (fun state ->
@@ -303,7 +308,11 @@ and public ILInterpreter() as this =
                 else blockCase {cilState with state = state})
         if constructorInfo.DeclaringType.IsSubclassOf typedefof<System.Delegate>
             then x.CreateDelegate constructedTermType cilState
-            else nonDelegateCase cilState
+        elif constructorInfo.DeclaringType.IsSubclassOf typedefof<System.Exception>
+            then
+                let _, cilState = retrieveActualParameters constructorInfo cilState
+                {cilState with opStack = MakeNullRef()::cilState.opStack} :: []
+        else nonDelegateCase cilState
     member private x.LdsFld addressNeeded (cfg : cfgData) offset (cilState : cilState) =
         let fieldInfo = resolveFieldFromMetadata cfg (offset + OpCodes.Ldsfld.Size)
         assert (fieldInfo.IsStatic)
@@ -373,6 +382,7 @@ and public ILInterpreter() as this =
                 (fun state k -> k (hasValue, state))
                 hasValueCase
                 (fun cilState k -> k [{cilState with opStack = MakeNullRef() :: cilState.opStack}])
+                (fun error -> {cilState with exceptionFlag = Some error} :: [])
         x.ReduceMethodBaseCall hasValueMethodInfo cilState (Some v) (Specified []) (fun hasValueResults ->
         Cps.List.mapk boxNullable hasValueResults List.concat)
 
@@ -387,10 +397,12 @@ and public ILInterpreter() as this =
                     (fun state k -> k (Types.TypeIsNullable termType, state))
                     (fun cilState k -> x.BoxNullable t v cilState |> k)
                     (fun cilState k -> allocateValueTypeInHeap v cilState |> k)
+                    (fun err -> {cilState with exceptionFlag = Some err} :: [])
             StatedConditionalExecutionCIL cilState
                 (fun state k -> k (Types.IsValueType termType, state))
                 boxValueType
                 (fun cilState k -> k [cilState])
+                (fun err -> {cilState with exceptionFlag = Some err} :: [])
                 id
         | _ -> __notImplemented__()
     member private x.UnboxCommon (op : OpCode) handleReferenceType handleRestResults (cfg : cfgData) offset (cilState : cilState) =
@@ -408,6 +420,7 @@ and public ILInterpreter() as this =
                         let address, state = Memory.AllocateDefaultBlock cilState.state termType
                         k [handleRestResults(address, {cilState with state = state})])
                     (x.Raise x.NullReferenceException)
+                    (fun error -> (error, {cilState with exceptionFlag = Some error}) :: [])
             let canCastValueTypeToNullableTargetCase (cilState : cilState) =
                 let underlyingTypeOfNullableT = Nullable.GetUnderlyingType(t)
                 StatedConditionalExecutionCIL cilState
@@ -419,25 +432,30 @@ and public ILInterpreter() as this =
                         let modifyResults results = Cps.List.map (fun (_, cilState) -> handleRestResults (address, cilState)) results k
                         x.ReduceMethodBaseCall nullableConstructor {cilState with state = state} (Some address) (Specified [value]) modifyResults)
                     (x.Raise InvalidCastException)
+                    (fun error -> (error, {cilState with exceptionFlag = Some error}) :: [])
             let canCastValueTypeToTargetCase (cilState : cilState) =
                 StatedConditionalExecutionCIL cilState
                     (fun state k -> k (Types.TypeIsNullable termType, state))
                     canCastValueTypeToNullableTargetCase
                     (fun cilState k -> k [handleRestResults(castUnchecked termType obj cilState.state fst, cilState)])
+                    (fun error -> (error, {cilState with exceptionFlag = Some error}) :: [])
             let valueTypeCase (cilState : cilState) =
                 StatedConditionalExecutionCIL cilState
                     (fun state k -> k (Types.CanCast obj termType, state))
                     canCastValueTypeToTargetCase
                     (x.Raise InvalidCastException)
+                    (fun error -> (error, {cilState with exceptionFlag = Some error}) :: [])
             let nonNullCase (cilState : cilState) =
                 let SystemValueType = Types.FromDotNetType cilState.state typedefof<System.ValueType>
                 StatedConditionalExecutionCIL cilState
                     (fun state k -> k (Types.RefIsType obj SystemValueType, state))
                     valueTypeCase
                     (handleReferenceType obj termType)
+                    (fun error -> (error, {cilState with exceptionFlag = Some error}) :: [])
             BranchOnNull {cilState with opStack = stack} obj
                 nullCase
                 nonNullCase
+                (fun error -> (error, {cilState with exceptionFlag = Some error}) :: [])
                 pushFunctionResults
         | _ -> __notImplemented__()
     member private x.Unbox (cfg : cfgData) offset (cilState : cilState) =
@@ -450,6 +468,7 @@ and public ILInterpreter() as this =
                 (fun state k -> k (Types.CanCast obj termType, state))
                 (fun cilState k -> k [castUnchecked termType obj cilState.state fst, cilState])
                 (x.Raise InvalidCastException)
+                (fun error -> (error, {cilState with exceptionFlag = Some error}) :: [])
         let handleRestResults (address, cilState : cilState) = Memory.Dereference cilState.state address |> fst, cilState
         x.UnboxCommon OpCodes.Unbox_Any handleReferenceTypeResults handleRestResults cfg offset cilState
 

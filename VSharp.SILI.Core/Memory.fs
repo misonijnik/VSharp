@@ -609,7 +609,7 @@ module internal Memory =
             | Ref(RefNullAddress, [])
             | Ptr(RefNullAddress, [], _, _) -> RefNullAddress
             | _ -> __notImplemented__()
-        unguard reference |> guardedMapWithoutMerge destruct
+        unguard reference |> List.filter (fun (_, v) -> not <| isError v) |> guardedMapWithoutMerge destruct
 
     and private fillHoleInHeapAddress (ctx : compositionContext) state address baseType sightType = // TODO: find another solution someday..
         match address.term with

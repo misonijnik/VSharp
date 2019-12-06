@@ -499,6 +499,7 @@ module internal Terms =
 
     let private isSymbolicTopLevel = function
         | RefTopLevelHeap(a, _, _) -> isConcrete a |> not
+        | RefTopLevelStack _
         | RefNullAddress -> false
         | _ -> __notImplemented__()
 

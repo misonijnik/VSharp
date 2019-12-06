@@ -36,28 +36,7 @@ type public ExplorerBase() =
         | _ -> internalfail "Some new ICodeLocation"
 
     interface IActivator with
-        member x.CreateInstance _ exceptionType arguments state =
-            x.InitEntryPoint state exceptionType (fun state ->
-            let constructors = exceptionType.GetConstructors()
-            let argumentsLength = List.length arguments
-            let argumentsTypes =
-                List.map (TypeOf >> Types.ToDotNetType) arguments
-            let ctors =
-                constructors
-                |> List.ofArray
-                |> List.filter (fun (ci : ConstructorInfo)
-                                 -> ci.GetParameters().Length = argumentsLength
-                                    && ci.GetParameters()
-                                       |> Seq.forall2(fun p1 p2 -> p2.ParameterType.IsAssignableFrom(p1)) argumentsTypes)
-            assert(List.length ctors = 1)
-            let ctor = List.head ctors
-            let methodId = x.MakeMethodIdentifier ctor
-            assert (not <| exceptionType.IsValueType)
-            let reference, state = Memory.AllocateDefaultBlock state (Types.FromDotNetType state exceptionType)
-            let invoke state k = x.Invoke methodId state (Some reference) k
-            x.ReduceFunction state (Some reference) (Specified arguments) methodId ctor invoke (fun (res, state) ->
-            assert (res = Nop)
-            reference, state))
+        member x.CreateInstance _ exceptionType arguments state = MakeNullRef(), state
 
     member x.NullReferenceException state =
         (x :> IActivator).CreateInstance () typeof<System.NullReferenceException> [] state

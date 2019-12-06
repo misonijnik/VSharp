@@ -131,7 +131,7 @@ module internal InstructionsSet =
 
     // --------------------------------------- Primitives ----------------------------------------
 
-    let StatedConditionalExecutionCIL (cilState : cilState) condition thenBranch elseBranch k =
+    let StatedConditionalExecutionCIL (cilState : cilState) condition thenBranch elseBranch errorHandler k =
         StatedConditionalExecution cilState.state condition
             (fun state k -> thenBranch {cilState with state = state} (fun cilState -> k (cilState, state)))
             (fun state k -> elseBranch {cilState with state = state} (fun cilState -> k (cilState, state)))
@@ -139,7 +139,7 @@ module internal InstructionsSet =
             (fun _ _ -> Memory.EmptyState)
             (fun _ _ -> List.append)
             (fun _ _ _ _ -> Memory.EmptyState)
-            (fun _ -> __notImplemented__()) // TODO: update, when exceptions will be implemented
+            errorHandler // TODO: update, when exceptions will be implemented
             (fst >> k)
     let GuardedApply (cilState : cilState) term f k =
         GuardedErroredStatedApplyk
@@ -356,6 +356,7 @@ module internal InstructionsSet =
                (fun state k -> k (condTransform <| ConcreteTerm2BooleanTerm cond, state))
                (fun cilState k -> k [offsetThen, cilState])
                (fun cilState k -> k [offsetElse, cilState])
+               (fun err -> (offsetThen, {cilState with exceptionFlag = Some err}) :: [])
                id
         | _ -> __notImplemented__()
     let brfalse = brcommon id
@@ -469,6 +470,7 @@ module internal InstructionsSet =
                     (fun state k -> k (guard, state))
                     (fun cilState k -> k [newOffset, cilState])
                     (fun _ k -> kRestCases cilState k) // ignore pc because we always know that cases do not overlap
+                    (fun err -> (newOffset, {cilState with exceptionFlag = Some err}) :: [])
             let fallThroughOffset, newOffsets = List.head newOffsets, List.tail newOffsets
             let casesAndOffsets = List.mapi (fun i offset -> value === MakeNumber i, offset) newOffsets
             let fallThroughGuard = // TODO: [cast int :> uint] `value` should be compared as uint
@@ -568,6 +570,7 @@ module internal InstructionsSet =
                 (fun state k -> k (isCast, state))
                 (fun cilState k -> k [cilState])
                 (fun cilState k -> k [{cilState with opStack = MakeNullRef() :: stack}])
+                (fun err -> {cilState with exceptionFlag = Some err} :: [])
                 id
         | _ -> __notImplemented__()
     let cgtun (cilState : cilState) =
@@ -601,6 +604,10 @@ module internal InstructionsSet =
         let typ = resolveTermTypeFromMetadata cilState.state cfg (offset + OpCodes.Sizeof.Size)
         let size = Types.SizeOf typ
         { cilState with opStack = MakeNumber size :: cilState.opStack } :: []
+    let throw (cilState : cilState) =
+        match cilState.opStack with
+        | error :: stack -> {cilState with exceptionFlag = Some error; opStack = stack} :: []
+        | _ -> __notImplemented__()
     let zipWithOneOffset op cfgData offset newOffsets cilState =
         assert (List.length newOffsets = 1)
         let newOffset = List.head newOffsets
@@ -803,6 +810,7 @@ module internal InstructionsSet =
     opcode2Function.[hashFunction OpCodes.Stind_R8]           <- zipWithOneOffset <| fun _ _ -> stind TypeUtils.float64TermType
     opcode2Function.[hashFunction OpCodes.Stind_Ref]          <- zipWithOneOffset <| (fun _ _ _ -> Prelude.__notImplemented__())
     opcode2Function.[hashFunction OpCodes.Sizeof]             <- zipWithOneOffset <| sizeofInstruction
+    opcode2Function.[hashFunction OpCodes.Throw]              <- zipWithOneOffset <| (fun _ _  -> throw)
     // TODO: notImplemented instructions
     opcode2Function.[hashFunction OpCodes.Arglist]            <- zipWithOneOffset <| (fun _ _ _ -> Prelude.__notImplemented__())
     opcode2Function.[hashFunction OpCodes.Jmp]                <- zipWithOneOffset <| (fun _ _ _ -> Prelude.__notImplemented__())
@@ -833,7 +841,6 @@ module internal InstructionsSet =
     opcode2Function.[hashFunction OpCodes.Refanyval]          <- zipWithOneOffset <| (fun _ _ _ -> Prelude.__notImplemented__())
     opcode2Function.[hashFunction OpCodes.Rethrow]            <- zipWithOneOffset <| (fun _ _ _ -> Prelude.__notImplemented__())
     opcode2Function.[hashFunction OpCodes.Tailcall]           <- zipWithOneOffset <| (fun _ _ _ -> Prelude.__notImplemented__())
-    opcode2Function.[hashFunction OpCodes.Throw]              <- zipWithOneOffset <| (fun _ _ _ -> Prelude.__notImplemented__())
     opcode2Function.[hashFunction OpCodes.Unaligned]          <- zipWithOneOffset <| (fun _ _ _ -> Prelude.__notImplemented__())
     opcode2Function.[hashFunction OpCodes.Volatile]           <- zipWithOneOffset <| (fun _ _ _ -> Prelude.__notImplemented__())
     opcode2Function.[hashFunction OpCodes.Initblk]            <- zipWithOneOffset <| (fun _ _ _ -> Prelude.__notImplemented__())
