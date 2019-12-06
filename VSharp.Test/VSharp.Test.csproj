@@ -16,6 +16,7 @@
 
     <ItemGroup>
         <PackageReference Include="Appveyor.TestLogger" Version="2.0.0" />
+        <PackageReference Include="ChessDotNet" Version="0.12.0" />
         <PackageReference Include="nunit" Version="3.12.0" />
         <PackageReference Include="NUnit3TestAdapter" Version="3.15.1" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.3.0" />
@@ -24,12 +25,6 @@
     <ItemGroup>
       <ProjectReference Include="..\VSharp.SILI\VSharp.SILI.fsproj" />
       <ProjectReference Include="..\VSharp.Solver\VSharp.Solver.fsproj" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <Reference Include="ChessDotNet, Version=0.9.4.0, Culture=neutral, PublicKeyToken=95fb3ccd1157343b">
-        <HintPath>Tests\Chess.NET\ChessDotNet.dll</HintPath>
-      </Reference>
     </ItemGroup>
 
 </Project>
