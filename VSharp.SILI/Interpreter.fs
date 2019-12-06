@@ -29,6 +29,7 @@ type public CodePortionInterpreter(ilInterpreter : ILInterpreter, codeLoc : ICod
             |> getResultAndState |> k
         match codeLoc with
         | :? ILMethodMetadata ->
+            Logger.printLog Logger.Info "Starting exploring method %O" codeLoc
             ilInterpreter.InitEntryPoint state cfg.methodBase.DeclaringType (fun state ->
             interpret state (Intermediate 0) destination.Return [])
         | :? ILCodePortion as ilcode ->

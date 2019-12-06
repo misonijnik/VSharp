@@ -63,6 +63,7 @@ namespace VSharp.Test
         public void PrepareSvm()
         {
             Trace.Listeners.Add(new DumpStackTraceListener());
+            Logger.current_text_writer = TestContext.Progress;
 
             var ci = new CultureInfo("en-GB")
             {
