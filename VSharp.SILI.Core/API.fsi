@@ -60,6 +60,8 @@ module API =
         val (|RecursionOutcome|_|) : ISymbolicConstantSource -> (ICodeLocation * state * term option * bool) option
         val (|Conjunction|_|) : term -> term list option
         val (|Disjunction|_|) : term -> term list option
+        val (|GuardedValues|_|) : term -> (term list * term list) option
+        val (|Error|_|) : term -> term option
 
         val ConstantsOf : term seq -> term System.Collections.Generic.ISet
 

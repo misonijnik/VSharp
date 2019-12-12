@@ -77,6 +77,8 @@ module API =
         let (|RecursionOutcome|_|) s = Explorer.(|RecursionOutcome|_|) s
         let (|Conjunction|_|) term = Terms.(|Conjunction|_|) term.term
         let (|Disjunction|_|) term = Terms.(|Disjunction|_|) term.term
+        let (|GuardedValues|_|) term = Terms.(|GuardedValues|_|) term.term
+        let (|Error|_|) term = Terms.(|ErrorT|_|) term
 
         let ConstantsOf terms = discoverConstants terms
 

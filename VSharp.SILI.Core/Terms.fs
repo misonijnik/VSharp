@@ -78,7 +78,7 @@ type EmptyIdentifier() =
 
 [<StructuralEquality;NoComparison>]
 type operation =
-    | Operator of OperationType * bool
+    | Operator of OperationType * bool // Type of operation and overflow flag
     | Application of IFunctionIdentifier
     | Cast of termType * termType * bool
     member x.priority =
@@ -772,6 +772,14 @@ module internal Terms =
 
     let (|Disjunction|_|) = function
         | Expression(Operator(OperationType.LogicalOr, _), xs, _) -> Some(Disjunction xs)
+        | _ -> None
+
+    let (|ConjunctionT|_|) = term >> function
+        | Expression(Operator(OperationType.LogicalAnd, _), xs, _) -> Some(ConjunctionT xs)
+        | _ -> None
+
+    let (|DisjunctionT|_|) = term >> function
+        | Expression(Operator(OperationType.LogicalOr, _), xs, _) -> Some(DisjunctionT xs)
         | _ -> None
 
     let (|Xor|_|) = term >> function
