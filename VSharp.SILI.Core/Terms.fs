@@ -395,6 +395,11 @@ module HashMap =
                 hashMap.Add(node, term)
                 term
 
+    let changeTerm node term =
+        if hashMap.ContainsKey node then hashMap.Remove node |> ignore
+        hashMap.Add(node, term)
+        term
+
 [<AutoOpen>]
 module internal Terms =
 

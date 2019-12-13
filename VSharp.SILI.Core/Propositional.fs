@@ -9,6 +9,9 @@ type IPropositionalSimplifier =
 module internal Propositional =
 
     let mutable private simplifier : IPropositionalSimplifier option = None
+    let simplifyCached (simplifier : IPropositionalSimplifier) t =
+        let res = simplifier.Simplify t
+        if res <> t then HashMap.changeTerm t.term res else res
     let configureSimplifier s = simplifier <- Some s
 
 // ------------------------------- Utilities -------------------------------
@@ -87,7 +90,7 @@ module internal Propositional =
     let rec private simplifyConnective mtd operation opposite stopValue ignoreValue x y k =
         let defaultCase () = makeBin mtd operation x y |> k in
         match simplifier with
-        | Some simplifier -> simplifier.Simplify(makeBin mtd operation x y) |> k
+        | Some simplifier -> simplifyCached simplifier (makeBin mtd operation x y) |> k
         | None ->
             match x.term, y.term with
             | Error _, _ -> k x
@@ -216,7 +219,7 @@ module internal Propositional =
             Cps.List.foldlk (simplifyAnd mtd) True xs k)
         | _ ->
             match simplifier with
-            | Some simplifier -> simplifier.Simplify(makeUnary OperationType.LogicalNeg x false Bool mtd) |> k
+            | Some simplifier -> simplifyCached simplifier (makeUnary OperationType.LogicalNeg x false Bool mtd) |> k
             | None ->
                 match x.term with
                 | Error _ -> k x

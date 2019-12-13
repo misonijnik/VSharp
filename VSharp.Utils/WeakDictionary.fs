@@ -42,8 +42,13 @@ and public weakdict<'key, 'value when 'key : not struct and 'key : equality and 
 //            this.Free key
             dead
 
-    member internal x.Remove key =
-        x.dict.Remove key
+    member public this.Remove key =
+        let keyRef = autoref<'key,'value>(key, this, defaultKey)
+        this.dict.Remove keyRef
+
+    member public this.ContainsKey key =
+        let keyRef = autoref<'key,'value>(key, this, defaultKey)
+        this.dict.ContainsKey keyRef
 
     member public this.Add(key : 'key, value : 'value) =
         let keyRef = autoref<'key,'value>(key, this, defaultKey)
