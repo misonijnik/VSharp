@@ -2,6 +2,7 @@ namespace VSharp.Solver
 
 open VSharp
 open VSharp.Core
+open VSharp.Z3
 
 module internal Propositional =
     let True = Concrete (box true) Bool
@@ -64,8 +65,8 @@ module internal Propositional =
             else Seq.fold orProp x xs
         | _ -> False
 
-    let private z3Simplifier = Z3Simplifier() :> IPropositionalSimplifier
-    
+    let private simplifier = Simplifier()
+
     let rec private simplify alpha x k =
         let criticalConstraintFolder star (rlist, llist, flag) c k =
             let nllist = conjunction (List.map star llist)
@@ -91,13 +92,13 @@ module internal Propositional =
         | Negation _ ->
             let notAlpha = notProp alpha
             let first = orProp notAlpha x
-            let simpleFirst = z3Simplifier.Simplify first
+            let simpleFirst = simplifier.Simplify first
             k <| if isTrue simpleFirst
                 then True
                 else
                     let notX = notProp x
                     let second = orProp notAlpha notX
-                    let simpleSecond = z3Simplifier.Simplify second
+                    let simpleSecond = simplifier.Simplify second
                     if isTrue simpleSecond then False else x
         | _ -> internalfail "Всё плохо :("
 

@@ -37,6 +37,8 @@ module internal Z3 =
         inherit Context()
         let cache = freshCache()
         let fp = this.MkFixedpoint()
+        let solver = this.MkSolver()
+        member x.Solver() = solver
         member x.Cache = cache
         member x.FP = fp
 
@@ -247,8 +249,36 @@ module internal Z3 =
         ctxs.Push(context)
         try
             let encoded = encodeTermExt stopper t
-            let simple = encoded.Simplify()
-            decode simple
+            let solver = context.Solver()
+            solver.Assert (context.MkNot encoded)
+            let result = solver.Check()
+            if result = Status.UNSATISFIABLE then True
+            else t
+//            let simple = encoded.Simplify()
+//            decode simple
         finally
             ctxs.Pop() |> ignore
             context.Dispose()
+
+    type Simplifier() =
+        member x.Simplify t =
+            let stopper op args =
+                match op with
+                | OperationType.LogicalNeg
+                | OperationType.LogicalAnd
+                | OperationType.LogicalOr
+                | OperationType.Equal when List.forall (TypeOf >> Types.IsBool) args ->
+                    false
+                | _ -> true
+            let context = new EncodingContext()
+            ctxs.Push(context)
+            try
+                let encoded = encodeTermExt stopper t
+                let solver = context.Solver()
+                solver.Assert (context.MkNot encoded)
+                let result = solver.Check()
+                if result = Status.UNSATISFIABLE then True
+                else t
+            finally
+                ctxs.Pop() |> ignore
+                context.Dispose()

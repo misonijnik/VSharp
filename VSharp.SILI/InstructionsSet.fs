@@ -34,6 +34,7 @@ module internal TypeUtils =
     let unativeintType  = Numeric typedefof<unativeint>
     let float64TermType = Numeric typedefof<double>
     let float32TermType = Numeric typedefof<float32>
+    let charType        = Numeric typedefof<char>
     let int8Type        = Numeric typedefof<int8>
     let int16Type       = Numeric typedefof<int16>
     let int32Type       = Numeric typedefof<int32>
@@ -47,6 +48,7 @@ module internal TypeUtils =
         | Bool -> uint32Type
         | Numeric (Id typ) when typ = typedefof<int32> || typ = typedefof<uint32> -> uint32Type
         | Numeric (Id typ) when typ = typedefof<int8> || typ = typedefof<uint8> -> uint8Type
+        | Numeric (Id typ) when typ = typedefof<char> -> charType
         | Numeric (Id typ) when typ = typedefof<int16> || typ = typedefof<uint16> -> uint16Type
         | Numeric (Id typ) when typ = typedefof<int64> || typ = typedefof<uint64> -> uint64Type
         | Numeric (Id typ) when typ = typedefof<double> -> float64TermType

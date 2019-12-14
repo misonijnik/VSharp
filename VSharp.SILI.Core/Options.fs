@@ -11,5 +11,5 @@ module internal Options =
     let mutable private explorationMode = TrustConventions
     let public ExplorationMode () = explorationMode
 
-    let mutable private recursionUnrollingMode = SmartUnrolling
+    let mutable private recursionUnrollingMode = NeverUnroll
     let public RecursionUnrollingMode () = recursionUnrollingMode
